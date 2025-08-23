@@ -1,0 +1,33 @@
+name: Deploy Backend (Lambda)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ap-south-1
+          role-to-assume: arn:aws:iam::233110572042:role/github-actions-bakchoddost-backend
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Zip Lambda code
+        run: zip -r ../lambda.zip .
+
+      - name: Deploy to Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name bakchoddost-backend \
+            --zip-file fileb://lambda.zip
