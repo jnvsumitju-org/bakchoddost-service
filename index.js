@@ -16,7 +16,7 @@ async function bootstrap() {
 }
 
 export const handler = async (event, context) => {
-  const srv = await bootstrap();
+  const srv = serverlessExpress({ app });
   return srv(event, context);
 };
   
