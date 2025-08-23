@@ -27,6 +27,8 @@ router.post("/register", async (req, res) => {
     });
     res.status(201).json({ id: user._id, email: user.email, token });
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("/api/auth/register error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Registration failed" });
   }
@@ -50,6 +52,8 @@ router.post("/login", async (req, res) => {
     });
     res.json({ id: user._id, email: user.email, token });
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("/api/auth/login error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Login failed" });
   }

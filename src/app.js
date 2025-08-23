@@ -6,6 +6,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/authRoutes.js";
 import poemRoutes from "./routes/poemRoutes.js";
+import { randomUUID } from "crypto";
 
 export function createApp() {
   const app = express();
@@ -35,6 +36,14 @@ export function createApp() {
   app.use(cookieParser());
   app.use(morgan("dev"));
 
+  // Attach request id for correlation
+  app.use((req, res, next) => {
+    // eslint-disable-next-line no-param-reassign
+    req.id = req.headers["x-request-id"] || randomUUID();
+    res.setHeader("x-request-id", req.id);
+    next();
+  });
+
   const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
   const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
   const generateLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -49,8 +58,18 @@ export function createApp() {
 
   // Error handler
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err, _req, res, _next) => {
+  app.use((err, req, res, _next) => {
     const status = err.status || 500;
+    // eslint-disable-next-line no-console
+    console.error(
+      "[error] id=%s method=%s url=%s status=%s message=%s stack=%s",
+      req.id,
+      req.method,
+      req.originalUrl || req.url,
+      status,
+      err.message,
+      err.stack
+    );
     res.status(status).json({ message: err.message || "Server error" });
   });
 

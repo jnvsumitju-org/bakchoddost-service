@@ -57,6 +57,8 @@ router.post("/generate", async (req, res) => {
     await PoemTemplate.updateOne({ _id: template._id }, { $inc: { usageCount: 1 } });
     res.json({ text, templateId: template._id });
   } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error("/api/poems/generate error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to generate poem" });
   }
