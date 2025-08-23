@@ -1,15 +1,22 @@
-export const handler = async (event) => {
-    return {
-      statusCode: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-      body: JSON.stringify({
-      message: "Hello from Lambda!",
-      path: event.rawPath,
-      query: event.queryStringParameters,
-    }),
-    };
-  };
+import serverlessExpress from "@vendia/serverless-express";
+import dotenv from "dotenv";
+import { connectToDatabase } from "./src/config/db.js";
+import { createApp } from "./src/app.js";
+
+dotenv.config();
+let server;
+
+async function bootstrap() {
+  if (!server) {
+    await connectToDatabase();
+    const app = createApp();
+    server = serverlessExpress({ app });
+  }
+  return server;
+}
+
+export const handler = async (event, context) => {
+  const srv = await bootstrap();
+  return srv(event, context);
+};
   
