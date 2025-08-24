@@ -16,6 +16,7 @@ async function bootstrap() {
 }
 
 export const handler = async (event, context) => {
+  const app = createApp();
   const srv = serverlessExpress({ app });
   return srv(event, context);
 };
