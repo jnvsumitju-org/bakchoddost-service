@@ -4,11 +4,11 @@ import { connectToDatabase } from "./src/config/db.js";
 import { createApp } from "./src/app.js";
 
 dotenv.config();
-let server;
+let server; // cached between Lambda invocations
 
 async function bootstrap() {
   if (!server) {
-    await connectToDatabase();
+    await connectToDatabase();   // connect MongoDB once, on cold start
     const app = createApp();
     server = serverlessExpress({ app });
   }
@@ -16,8 +16,6 @@ async function bootstrap() {
 }
 
 export const handler = async (event, context) => {
-  const app = createApp();
-  const srv = serverlessExpress({ app });
+  const srv = await bootstrap();  // use cached app/server
   return srv(event, context);
 };
-  
