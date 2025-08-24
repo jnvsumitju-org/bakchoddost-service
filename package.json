@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.873.0",
     "@vendia/serverless-express": "^4.12.6",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",

@@ -3,14 +3,17 @@ import bcrypt from "bcryptjs";
 
 const AdminUserSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String, required: true, minlength: 6 },
+    email: { type: String, required: false, unique: true, lowercase: true, trim: true, sparse: true },
+    password: { type: String, required: false, minlength: 6 },
+    phone: { type: String, required: false, unique: true, trim: true, sparse: true },
+    username: { type: String, required: false, unique: true, lowercase: true, trim: true, sparse: true },
+    name: { type: String, required: false, trim: true },
   },
   { timestamps: true }
 );
 
 AdminUserSchema.pre("save", async function preSave(next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

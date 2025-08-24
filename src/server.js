@@ -63,6 +63,9 @@ const generateLimiter = rateLimit({
 app.use(apiLimiter);
 
 // Routes
+app.get("/", (_req, res) => {
+  res.json({ ok: true, service: "bakchoddost-api", hint: "Use /api/health" });
+});
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "bakchoddost-api" });
 });
