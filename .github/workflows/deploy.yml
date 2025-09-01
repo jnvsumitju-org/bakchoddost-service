@@ -26,13 +26,13 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        working-directory: ./backend
+        working-directory: ./
         run: npm ci --omit=dev
 
       - name: Build Lambda bundle
-        working-directory: ./backend
+        working-directory: ./
         run: |
-          zip -r ../lambda.zip index.js src package.json package-lock.json
+          zip -r ./lambda.zip index.js src package.json package-lock.json
 
       - name: Deploy to Lambda
         run: |
