@@ -66,6 +66,7 @@ app.use(apiLimiter);
 app.get("/", (_req, res) => {
   res.json({ ok: true, service: "bakchoddost-api", hint: "Use /api/health" });
 });
+//Health check
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "bakchoddost-api" });
 });
