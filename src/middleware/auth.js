@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { AdminUser } from "../models/AdminUser.js";
+import env from "../config/env.js";
 
 export async function requireAuth(req, res, next) {
   try {
@@ -9,7 +10,7 @@ export async function requireAuth(req, res, next) {
     const token = tokenFromHeader || tokenFromCookie;
     if (!token) return res.status(401).json({ message: "Unauthorized" });
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "dev_secret");
+    const payload = jwt.verify(token, env.JWT_SECRET);
     const user = await AdminUser.findById(payload.id).select("-password");
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     req.user = user;
@@ -20,8 +21,7 @@ export async function requireAuth(req, res, next) {
 }
 
 export function signToken(userId) {
-  const secret = process.env.JWT_SECRET || "dev_secret";
-  return jwt.sign({ id: userId }, secret, { expiresIn: "7d" });
+  return jwt.sign({ id: userId }, env.JWT_SECRET, { expiresIn: "7d" });
 }
 
 

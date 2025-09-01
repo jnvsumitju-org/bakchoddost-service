@@ -8,10 +8,8 @@ const router = Router();
 
 // Public endpoints
 router.get("/trending", async (_req, res) => {
-  // Return 3-4 random poems with placeholder demo values
-  const count = await PoemTemplate.countDocuments();
-  const sampleSize = Math.min(count, 4);
-  const poems = await PoemTemplate.aggregate([{ $sample: { size: sampleSize || 0 } }]);
+  // Return up to 4 random poems (skip count to reduce DB round trips)
+  const poems = await PoemTemplate.aggregate([{ $sample: { size: 4 } }]);
   const demo = poems.map((p) => ({
     id: p._id,
     text: renderPoemTemplate(p.text, "आप", ["मोनू", "टिंकू", "बबलू"]),
@@ -26,15 +24,19 @@ router.get("/browse", async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
   const q = (req.query.q || "").toString().trim();
-  const filter = q
-    ? { text: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" } }
-    : {};
+
+  const useTextSearch = q.length > 0;
+  const filter = useTextSearch ? { $text: { $search: q } } : {};
+  const sort = useTextSearch ? { score: { $meta: "textScore" } } : { createdAt: -1 };
+
   const total = await PoemTemplate.countDocuments(filter);
-  const items = await PoemTemplate.find(filter)
-    .sort({ createdAt: -1 })
+  const query = PoemTemplate.find(filter)
+    .sort(sort)
     .skip((page - 1) * limit)
     .limit(limit)
-    .select({ text: 1, instructions: 1, usageCount: 1 });
+    .select({ text: 1, instructions: 1, usageCount: 1, ...(useTextSearch ? { score: { $meta: "textScore" } } : {}) });
+
+  const items = await query;
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 });
 

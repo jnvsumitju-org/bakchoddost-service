@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/authRoutes.js";
 import poemRoutes from "./routes/poemRoutes.js";
 import { randomUUID } from "crypto";
+import env from "./config/env.js";
 
 export function createApp() {
   const app = express();
@@ -20,8 +21,7 @@ export function createApp() {
     })
   );
 
-  const corsEnv = process.env.CORS_ORIGINS || process.env.CORS_ORIGIN || "http://localhost:3000,http://127.0.0.1:3000";
-  const allowedOrigins = corsEnv.split(",").map((s) => s.trim()).filter(Boolean);
+  const allowedOrigins = env.CORS_ORIGINS;
   const corsMiddleware = cors({
     origin(origin, cb) {
       if (!origin) return cb(null, true);
@@ -36,7 +36,9 @@ export function createApp() {
   app.use(express.json({ limit: "100kb" }));
   app.use(express.urlencoded({ extended: true, limit: "100kb" }));
   app.use(cookieParser());
-  app.use(morgan("dev"));
+  if (env.NODE_ENV !== "test") {
+    app.use(morgan(env.isProduction ? "combined" : "dev"));
+  }
 
   // Attach request id for correlation
   app.use((req, res, next) => {

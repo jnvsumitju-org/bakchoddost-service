@@ -10,6 +10,9 @@ const PoemTemplateSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Text search index for faster browse queries
+PoemTemplateSchema.index({ text: "text", instructions: "text" });
+
 export const PoemTemplate =
   mongoose.models.PoemTemplate || mongoose.model("PoemTemplate", PoemTemplateSchema);
 

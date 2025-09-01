@@ -9,6 +9,7 @@ async function main() {
   const existing = await PoemTemplate.countDocuments();
   if (existing > 0) {
     // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console
     console.log(`Templates already present: ${existing}`);
     process.exit(0);
   }
@@ -32,6 +33,7 @@ async function main() {
   ];
 
   await PoemTemplate.insertMany(samples);
+  // eslint-disable-next-line no-console
   // eslint-disable-next-line no-console
   console.log("Seeded poem templates.");
   process.exit(0);

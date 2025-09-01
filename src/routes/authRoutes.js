@@ -3,15 +3,14 @@ import { z } from "zod";
 import twilio from "twilio";
 import { AdminUser } from "../models/AdminUser.js";
 import { signToken, requireAuth } from "../middleware/auth.js";
+import env from "../config/env.js";
 
 const router = Router();
 
 function getTwilio() {
-  const twilioSid = process.env.TWILIO_ACCOUNT_SID || "";
-  const twilioToken = process.env.TWILIO_AUTH_TOKEN || "";
-  const twilioFrom = process.env.TWILIO_FROM_NUMBER || "";
-  const sms = twilioSid && twilioToken ? twilio(twilioSid, twilioToken) : null;
-  return { sms, twilioFrom };
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = env;
+  const sms = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN ? twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN) : null;
+  return { sms, twilioFrom: TWILIO_FROM_NUMBER };
 }
 
 // OTP login/signup start (send SMS)
@@ -36,9 +35,12 @@ router.post("/otp/start", async (req, res) => {
       from: twilioFrom,
       body: `Your Bakchoddost verification code is ${code}`,
     });
-    // eslint-disable-next-line no-console
-    console.log(`[otp] sent to=%s code=%s`, phone, code);
-    const shouldReturnCode = process.env.BCD_RETURN_OTP === "true" || process.env.NODE_ENV !== "production";
+    // Only log OTP meta in non-production to avoid leaking in logs
+    if (!env.isProduction) {
+      // eslint-disable-next-line no-console
+      console.log(`[otp] sent to=%s code=%s`, phone, code);
+    }
+    const shouldReturnCode = env.BCD_RETURN_OTP || !env.isProduction;
     if (shouldReturnCode) return res.json({ ok: true, code });
     return res.json({ ok: true });
   } catch (error) {
@@ -66,7 +68,7 @@ router.post("/otp/confirm", async (req, res) => {
     await user.save();
 
     const token = signToken(user._id.toString());
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: isProd ? "lax" : "lax",
@@ -120,7 +122,7 @@ router.post("/register", async (req, res) => {
     if (existing) return res.status(400).json({ message: "Email already registered" });
     const user = await AdminUser.create({ email, password });
     const token = signToken(user._id.toString());
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: isProd ? "lax" : "lax",
@@ -145,7 +147,7 @@ router.post("/login", async (req, res) => {
     const ok = await user.comparePassword(password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
     const token = signToken(user._id.toString());
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
       sameSite: isProd ? "lax" : "lax",
