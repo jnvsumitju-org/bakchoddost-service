@@ -29,6 +29,8 @@ export function createApp() {
       return cb(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Amz-Security-Token"],
   });
   app.use(corsMiddleware);
   app.use(express.json({ limit: "100kb" }));
