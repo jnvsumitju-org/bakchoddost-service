@@ -1,30 +1,49 @@
 import { Router } from "express";
 import { z } from "zod";
-import { CognitoIdentityProviderClient, InitiateAuthCommand, RespondToAuthChallengeCommand, SignUpCommand } from "@aws-sdk/client-cognito-identity-provider";
+import twilio from "twilio";
 import { AdminUser } from "../models/AdminUser.js";
 import { signToken, requireAuth } from "../middleware/auth.js";
 
 const router = Router();
-// ENV (provided later by user)
-const REGION = process.env.AWS_REGION || "ap-south-1";
-const USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || "";
-const CLIENT_ID = process.env.COGNITO_APP_CLIENT_ID || "";
-const cognito = new CognitoIdentityProviderClient({ region: REGION });
 
-// OTP login (CUSTOM_AUTH) flow
+function getTwilio() {
+  const twilioSid = process.env.TWILIO_ACCOUNT_SID || "";
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN || "";
+  const twilioFrom = process.env.TWILIO_FROM_NUMBER || "";
+  const sms = twilioSid && twilioToken ? twilio(twilioSid, twilioToken) : null;
+  return { sms, twilioFrom };
+}
+
+// OTP login/signup start (send SMS)
 const phoneSchema = z.object({ phone: z.string().min(6) });
 router.post("/otp/start", async (req, res) => {
   try {
     const { phone } = phoneSchema.parse(req.body);
-    const params = {
-      ClientId: CLIENT_ID,
-      AuthFlow: "CUSTOM_AUTH",
-      AuthParameters: { USERNAME: phone },
-    };
-    await cognito.send(new InitiateAuthCommand(params));
-    res.json({ ok: true });
+    const { sms, twilioFrom } = getTwilio();
+    if (!sms || !twilioFrom) return res.status(500).json({ message: "Twilio not configured" });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    await AdminUser.findOneAndUpdate(
+      { phone },
+      { $set: { phone, otpCode: code, otpExpiresAt: expiresAt } },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sms.messages.create({
+      to: phone,
+      from: twilioFrom,
+      body: `Your Bakchoddost verification code is ${code}`,
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[otp] sent to=%s code=%s`, phone, code);
+    const shouldReturnCode = process.env.BCD_RETURN_OTP === "true" || process.env.NODE_ENV !== "production";
+    if (shouldReturnCode) return res.json({ ok: true, code });
+    return res.json({ ok: true });
   } catch (error) {
-    console.error("/api/auth/otp/start error", error);
+    console.error("/api/auth/otp/start error", { message: error?.message, stack: error?.stack });
+    if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to start OTP" });
   }
 });
@@ -33,27 +52,32 @@ const confirmSchema = z.object({ phone: z.string().min(6), code: z.string().min(
 router.post("/otp/confirm", async (req, res) => {
   try {
     const { phone, code } = confirmSchema.parse(req.body);
-    const init = await cognito.send(new InitiateAuthCommand({
-      ClientId: CLIENT_ID,
-      AuthFlow: "CUSTOM_AUTH",
-      AuthParameters: { USERNAME: phone },
-    }));
-    const challenge = await cognito.send(new RespondToAuthChallengeCommand({
-      ClientId: CLIENT_ID,
-      ChallengeName: "CUSTOM_CHALLENGE",
-      Session: init.Session,
-      ChallengeResponses: { USERNAME: phone, ANSWER: code },
-    }));
-    if (!challenge.AuthenticationResult) return res.status(401).json({ message: "Invalid OTP" });
+    const now = new Date();
 
-    // Find or create local admin user record
     let user = await AdminUser.findOne({ phone });
-    if (!user) user = await AdminUser.create({ phone });
+    if (!user || !user.otpCode || !user.otpExpiresAt) {
+      return res.status(401).json({ message: "Invalid OTP" });
+    }
+    if (user.otpCode !== code) return res.status(401).json({ message: "Invalid OTP" });
+    if (user.otpExpiresAt < now) return res.status(401).json({ message: "OTP expired" });
+
+    user.otpCode = undefined;
+    user.otpExpiresAt = undefined;
+    await user.save();
+
     const token = signToken(user._id.toString());
-    res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    const isProd = process.env.NODE_ENV === "production";
+    res.cookie("token", token, {
+      httpOnly: true,
+      sameSite: isProd ? "lax" : "lax",
+      secure: isProd,
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
     res.json({ id: user._id, phone });
   } catch (error) {
-    console.error("/api/auth/otp/confirm error", error);
+    console.error("/api/auth/otp/confirm error", { message: error?.message, stack: error?.stack });
+    if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to confirm OTP" });
   }
 });

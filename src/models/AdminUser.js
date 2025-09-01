@@ -8,6 +8,8 @@ const AdminUserSchema = new mongoose.Schema(
     phone: { type: String, required: false, unique: true, trim: true, sparse: true },
     username: { type: String, required: false, unique: true, lowercase: true, trim: true, sparse: true },
     name: { type: String, required: false, trim: true },
+    otpCode: { type: String, required: false },
+    otpExpiresAt: { type: Date, required: false },
   },
   { timestamps: true }
 );
