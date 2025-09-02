@@ -32,7 +32,6 @@ router.post("/otp/start", async (req, res) => {
     req.log?.info("auth:otp:start", { phone });
     const { sms, twilioFrom } = getTwilio();
     const allowBypass = env.BCD_RETURN_OTP || !env.isProduction;
-    logger.info("Allow Bypass", { allowBypass });
     req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom, allowBypass });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -42,6 +41,7 @@ router.post("/otp/start", async (req, res) => {
 
     if (sms && twilioFrom) {
       try {
+        logger.info("Triggering SMS");
         const result = await sms.messages.create({
           to: phone,
           from: twilioFrom,
