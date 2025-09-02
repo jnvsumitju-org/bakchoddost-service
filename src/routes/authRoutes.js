@@ -27,10 +27,12 @@ function getTwilio() {
 const phoneSchema = z.object({ phone: z.string().min(6) });
 router.post("/otp/start", async (req, res) => {
   try {
+    logger.info("Sending OTP");
     const { phone } = phoneSchema.parse(req.body);
     req.log?.info("auth:otp:start", { phone });
     const { sms, twilioFrom } = getTwilio();
     const allowBypass = env.BCD_RETURN_OTP || !env.isProduction;
+    logger.info("Allow Bypass", { allowBypass });
     req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom, allowBypass });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
