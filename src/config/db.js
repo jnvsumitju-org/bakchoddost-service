@@ -8,20 +8,43 @@ let pool;
 
 export function getPool() {
   if (!pool) {
-    const useSSL = typeof env.DATABASE_URL === "string" && env.DATABASE_URL.includes("sslmode=require");
+    const isDev = env.NODE_ENV !== "production";
+    const ssl = isDev ? false : { rejectUnauthorized: false };
     pool = new Pool({
       connectionString: env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 10_000,
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl,
     });
   }
   return pool;
 }
 
+async function ensureLocalDatabase() {
+  if (env.NODE_ENV === "production") return;
+  try {
+    const url = new URL(env.DATABASE_URL);
+    const dbName = (url.pathname || "/").slice(1) || "postgres";
+    if (!dbName || dbName === "postgres") return;
+    const admin = new URL(env.DATABASE_URL);
+    admin.pathname = "/postgres";
+    const client = new pkg.Client({ connectionString: admin.toString(), ssl: false });
+    await client.connect();
+    logger.info("db:ensure:connect:postgres");
+    const { rows } = await client.query("SELECT 1 FROM pg_database WHERE datname = $1", [dbName]);
+    if (rows.length === 0) {
+      logger.info("db:ensure:create", { dbName });
+      await client.query(`CREATE DATABASE "${dbName}"`);
+      logger.info("db:ensure:created", { dbName });
+    }
+    await client.end();
+  } catch (e) {
+    logger.error("db:ensure:error", { message: e?.message });
+  }
+}
+
 export async function connectToDatabase() {
+  await ensureLocalDatabase();
   const p = getPool();
   // Test connection
   logger.info("db:connect:start");

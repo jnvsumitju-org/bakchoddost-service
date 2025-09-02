@@ -30,25 +30,35 @@ router.post("/otp/start", async (req, res) => {
     const { phone } = phoneSchema.parse(req.body);
     req.log?.info("auth:otp:start", { phone });
     const { sms, twilioFrom } = getTwilio();
-    if (!sms || !twilioFrom) return res.status(500).json({ message: "Twilio not configured" });
+    const allowBypass = env.BCD_RETURN_OTP || !env.isProduction;
+    req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom, allowBypass });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     await upsertOtpByPhone(phone, code, expiresAt);
 
-    await sms.messages.create({
-      to: phone,
-      from: twilioFrom,
-      body: `Your Bakchoddost verification code is ${code}`,
-    });
+    if (sms && twilioFrom) {
+      try {
+        const result = await sms.messages.create({
+          to: phone,
+          from: twilioFrom,
+          body: `Your Bakchoddost verification code is ${code}`,
+        });
+        req.log?.info("auth:otp:twilio:sent", { sid: result?.sid, status: result?.status });
+      } catch (twilioErr) {
+        req.log?.error("auth:otp:twilio:error", { message: twilioErr?.message, code: twilioErr?.code });
+        if (!allowBypass) return res.status(500).json({ message: "Failed to send OTP" });
+      }
+    } else if (!allowBypass) {
+      return res.status(500).json({ message: "Twilio not configured" });
+    }
     // Only log OTP meta in non-production to avoid leaking in logs
     if (!env.isProduction) {
       // eslint-disable-next-line no-console
       console.log(`[otp] sent to=%s code=%s`, phone, code);
     }
-    const shouldReturnCode = env.BCD_RETURN_OTP || !env.isProduction;
-    if (shouldReturnCode) return res.json({ ok: true, code });
+    if (allowBypass) return res.json({ ok: true, code });
     return res.json({ ok: true });
   } catch (error) {
     const log = req.log || logger;
