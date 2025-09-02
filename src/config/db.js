@@ -21,6 +21,7 @@ export function getPool() {
 export async function connectToDatabase() {
   const p = getPool();
   // Test connection
+  console.log("Connecting to Postgres...");
   await p.query("SELECT 1");
   console.log("✅ Connected to Postgres");
   return p;
