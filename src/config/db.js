@@ -1,5 +1,6 @@
 import pkg from "pg";
 import env from "./env.js";
+import { logger } from "../utils/logger.js";
 
 const { Pool } = pkg;
 
@@ -23,14 +24,15 @@ export function getPool() {
 export async function connectToDatabase() {
   const p = getPool();
   // Test connection
-  console.log("Connecting to Postgres...");
+  logger.info("db:connect:start");
   await p.query("SELECT 1");
-  console.log("✅ Connected to Postgres");
+  logger.info("db:connect:success");
   return p;
 }
 
 export async function migrate() {
   const p = getPool();
+  logger.info("db:migrate:start");
   // Extensions (safe if superuser or permitted role). Ignore errors silently.
   try { await p.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`); } catch { /* noop */ }
   // AdminUser
@@ -63,4 +65,5 @@ export async function migrate() {
   // Indexes
   await p.query(`CREATE INDEX IF NOT EXISTS idx_poem_templates_usage_count ON poem_templates (usage_count DESC);`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_poem_templates_text_gin ON poem_templates USING GIN (to_tsvector('english', text));`);
+  logger.info("db:migrate:success");
 }

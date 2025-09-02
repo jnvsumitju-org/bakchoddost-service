@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes.js";
 import poemRoutes from "./routes/poemRoutes.js";
 import { randomUUID } from "crypto";
 import env from "./config/env.js";
+import { logger } from "./utils/logger.js";
 
 export function createApp() {
   const app = express();
@@ -45,6 +46,14 @@ export function createApp() {
     // eslint-disable-next-line no-param-reassign
     req.id = req.headers["x-request-id"] || randomUUID();
     res.setHeader("x-request-id", req.id);
+    const reqLog = logger.child({ reqId: req.id, method: req.method, url: req.originalUrl || req.url });
+    req.log = reqLog;
+    reqLog.info("request:start", { headers: { ...(req.headers || {}) } });
+    const start = Date.now();
+    res.on("finish", () => {
+      const ms = Date.now() - start;
+      reqLog.info("request:finish", { status: res.statusCode, durationMs: ms });
+    });
     next();
   });
 
@@ -64,16 +73,8 @@ export function createApp() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err, req, res, _next) => {
     const status = err.status || 500;
-    // eslint-disable-next-line no-console
-    console.error(
-      "[error] id=%s method=%s url=%s status=%s message=%s stack=%s",
-      req.id,
-      req.method,
-      req.originalUrl || req.url,
-      status,
-      err.message,
-      err.stack
-    );
+    const log = (req && req.log) || logger;
+    log.error("request:error", { status, message: err.message, stack: err.stack });
     res.status(status).json({ message: err.message || "Server error" });
   });
 

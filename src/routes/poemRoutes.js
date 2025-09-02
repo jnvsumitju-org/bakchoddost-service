@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { renderPoemTemplate, validateTemplateOrThrow, analyzeTemplate } from "../utils/poemEngine.js";
 import { samplePoems, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo } from "../repo/poems.js";
 import { getPool } from "../config/db.js";
+import { logger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -59,6 +60,7 @@ const genSchema = z.object({
 router.post("/generate", async (req, res) => {
   try {
     const { userName, friendNames } = genSchema.parse(req.body);
+    req.log?.info("poem:generate", { userName, friends: friendNames.length });
     const [template] = await samplePoems(1);
     if (!template) return res.status(404).json({ message: "No templates available" });
     // Ensure inputs satisfy template requirements
@@ -70,8 +72,8 @@ router.post("/generate", async (req, res) => {
     await incUsage(template.id);
     res.json({ text, templateId: template.id });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("/api/poems/generate error", { message: error?.message, stack: error?.stack });
+    const log = req.log || logger;
+    log.error("poem:generate:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to generate poem" });
   }
@@ -98,10 +100,13 @@ router.post("/", requireAuth, async (req, res) => {
   try {
     const data = poemSchema.parse(req.body);
     validateTemplateOrThrow(data.text);
+    req.log?.info("poem:create", { userId: req.user.id });
     const poem = await createPoem(req.user.id, data);
     res.status(201).json({ _id: poem.id });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
+    const log = req.log || logger;
+    log.error("poem:create:error", { message: error?.message, stack: error?.stack });
     return res.status(500).json({ message: "Failed to create poem" });
   }
 });
@@ -110,16 +115,20 @@ router.put("/:id", requireAuth, async (req, res) => {
   try {
     const data = poemSchema.parse(req.body);
     validateTemplateOrThrow(data.text);
+    req.log?.info("poem:update", { userId: req.user.id, id: req.params.id });
     const ok = await updatePoemRepo(req.params.id, req.user.id, data);
     if (!ok) return res.status(404).json({ message: "Not found" });
     res.json({ _id: req.params.id });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
+    const log = req.log || logger;
+    log.error("poem:update:error", { message: error?.message, stack: error?.stack });
     return res.status(500).json({ message: "Failed to update poem" });
   }
 });
 
 router.delete("/:id", requireAuth, async (req, res) => {
+  req.log?.info("poem:delete", { userId: req.user.id, id: req.params.id });
   const ok = await deletePoemRepo(req.params.id, req.user.id);
   if (!ok) return res.status(404).json({ message: "Not found" });
   res.json({ ok: true });

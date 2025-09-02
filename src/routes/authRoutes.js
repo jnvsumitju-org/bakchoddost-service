@@ -4,6 +4,7 @@ import twilio from "twilio";
 import bcrypt from "bcryptjs";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import env from "../config/env.js";
+import { logger } from "../utils/logger.js";
 import {
   upsertOtpByPhone,
   findByPhone,
@@ -27,6 +28,7 @@ const phoneSchema = z.object({ phone: z.string().min(6) });
 router.post("/otp/start", async (req, res) => {
   try {
     const { phone } = phoneSchema.parse(req.body);
+    req.log?.info("auth:otp:start", { phone });
     const { sms, twilioFrom } = getTwilio();
     if (!sms || !twilioFrom) return res.status(500).json({ message: "Twilio not configured" });
 
@@ -49,7 +51,8 @@ router.post("/otp/start", async (req, res) => {
     if (shouldReturnCode) return res.json({ ok: true, code });
     return res.json({ ok: true });
   } catch (error) {
-    console.error("/api/auth/otp/start error", { message: error?.message, stack: error?.stack });
+    const log = req.log || logger;
+    log.error("auth:otp:start:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to start OTP" });
   }
@@ -59,6 +62,7 @@ const confirmSchema = z.object({ phone: z.string().min(6), code: z.string().min(
 router.post("/otp/confirm", async (req, res) => {
   try {
     const { phone, code } = confirmSchema.parse(req.body);
+    req.log?.info("auth:otp:confirm", { phone });
     const now = new Date();
 
     let user = await findByPhone(phone);
@@ -81,7 +85,8 @@ router.post("/otp/confirm", async (req, res) => {
     });
     res.json({ id: user.id, phone });
   } catch (error) {
-    console.error("/api/auth/otp/confirm error", { message: error?.message, stack: error?.stack });
+    const log = req.log || logger;
+    log.error("auth:otp:confirm:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to confirm OTP" });
   }
@@ -100,12 +105,14 @@ const profileSchema = z.object({ username: z.string().min(3), name: z.string().m
 router.post("/register-profile", requireAuth, async (req, res) => {
   try {
     const { username, name } = profileSchema.parse(req.body);
+    req.log?.info("auth:profile:save", { userId: req.user.id, username });
     const taken = !(await usernameAvailable(username));
     if (taken) return res.status(409).json({ message: "Username taken" });
     await setProfile(req.user.id, username, name);
     res.json({ ok: true });
   } catch (error) {
-    console.error("/api/auth/register-profile error", error);
+    const log = req.log || logger;
+    log.error("auth:profile:save:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to register profile" });
   }
@@ -119,6 +126,7 @@ const authSchema = z.object({
 router.post("/register", async (req, res) => {
   try {
     const { email, password } = authSchema.parse(req.body);
+    req.log?.info("auth:register", { email });
     const existing = await findByEmail(email);
     if (existing) return res.status(400).json({ message: "Email already registered" });
     const salt = await bcrypt.genSalt(10);
@@ -135,8 +143,8 @@ router.post("/register", async (req, res) => {
     });
     res.status(201).json({ id: user.id, email: user.email, token });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("/api/auth/register error", { message: error?.message, stack: error?.stack });
+    const log = req.log || logger;
+    log.error("auth:register:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Registration failed" });
   }
@@ -145,6 +153,7 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = authSchema.parse(req.body);
+    req.log?.info("auth:login", { email });
     const user = await findByEmail(email);
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
     const ok = await bcrypt.compare(password, user.password);
@@ -160,8 +169,8 @@ router.post("/login", async (req, res) => {
     });
     res.json({ id: user.id, email: user.email, token });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("/api/auth/login error", { message: error?.message, stack: error?.stack });
+    const log = req.log || logger;
+    log.error("auth:login:error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Login failed" });
   }

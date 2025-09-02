@@ -24,7 +24,6 @@ const RawEnvSchema = z.object({
 });
 
 const raw = RawEnvSchema.parse(process.env);
-console.log(raw);
 const isProduction = raw.NODE_ENV === "production";
 
 // Compute validated + normalized env
