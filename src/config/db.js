@@ -12,7 +12,9 @@ export function getPool() {
       connectionString: env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 10_000,
-      ssl: useSSL ? { rejectUnauthorized: false } : undefined,
+      ssl: {
+        rejectUnauthorized: false,
+      },
     });
   }
   return pool;
