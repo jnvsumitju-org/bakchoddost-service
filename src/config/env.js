@@ -4,9 +4,8 @@ const RawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.string().optional(),
 
-  // Database
-  MONGODB_URI: z.string().optional(),
-  MONGODB_DB: z.string().optional(),
+  // Database (Postgres)
+  DATABASE_URL: z.string().optional(),
 
   // Auth
   JWT_SECRET: z.string().optional(),
@@ -25,6 +24,7 @@ const RawEnvSchema = z.object({
 });
 
 const raw = RawEnvSchema.parse(process.env);
+console.log(raw);
 const isProduction = raw.NODE_ENV === "production";
 
 // Compute validated + normalized env
@@ -33,8 +33,11 @@ export const env = {
   isProduction,
   PORT: Number(raw.PORT || 4000),
 
-  MONGODB_URI: raw.MONGODB_URI || (isProduction ? undefined : "mongodb://127.0.0.1:27017/bakchoddost"),
-  MONGODB_DB: raw.MONGODB_DB || undefined,
+  DATABASE_URL:
+    raw.DATABASE_URL ||
+    (isProduction
+      ? undefined
+      : "postgresql://bakchoddost:password@localhost:5432/bakchoddost"),
 
   JWT_SECRET: raw.JWT_SECRET || (isProduction ? undefined : "dev_secret"),
 
@@ -53,7 +56,7 @@ export const env = {
 
 // Strict checks for production-only critical envs
 const missing = [];
-if (!env.MONGODB_URI) missing.push("MONGODB_URI");
+if (!env.DATABASE_URL) missing.push("DATABASE_URL");
 if (!env.JWT_SECRET) missing.push("JWT_SECRET");
 
 if (isProduction && missing.length > 0) {

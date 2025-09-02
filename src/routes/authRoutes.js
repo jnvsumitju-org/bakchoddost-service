@@ -1,9 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
 import twilio from "twilio";
-import { AdminUser } from "../models/AdminUser.js";
+import bcrypt from "bcryptjs";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import env from "../config/env.js";
+import {
+  upsertOtpByPhone,
+  findByPhone,
+  clearOtp,
+  usernameAvailable,
+  setProfile,
+  findByEmail,
+  createWithEmailPassword,
+} from "../repo/users.js";
 
 const router = Router();
 
@@ -24,11 +33,7 @@ router.post("/otp/start", async (req, res) => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    await AdminUser.findOneAndUpdate(
-      { phone },
-      { $set: { phone, otpCode: code, otpExpiresAt: expiresAt } },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+    await upsertOtpByPhone(phone, code, expiresAt);
 
     await sms.messages.create({
       to: phone,
@@ -56,18 +61,16 @@ router.post("/otp/confirm", async (req, res) => {
     const { phone, code } = confirmSchema.parse(req.body);
     const now = new Date();
 
-    let user = await AdminUser.findOne({ phone });
-    if (!user || !user.otpCode || !user.otpExpiresAt) {
+    let user = await findByPhone(phone);
+    if (!user || !user.otp_code || !user.otp_expires_at) {
       return res.status(401).json({ message: "Invalid OTP" });
     }
-    if (user.otpCode !== code) return res.status(401).json({ message: "Invalid OTP" });
-    if (user.otpExpiresAt < now) return res.status(401).json({ message: "OTP expired" });
+    if (user.otp_code !== code) return res.status(401).json({ message: "Invalid OTP" });
+    if (new Date(user.otp_expires_at) < now) return res.status(401).json({ message: "OTP expired" });
 
-    user.otpCode = undefined;
-    user.otpExpiresAt = undefined;
-    await user.save();
+    await clearOtp(user.id);
 
-    const token = signToken(user._id.toString());
+    const token = signToken(user.id);
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
@@ -76,7 +79,7 @@ router.post("/otp/confirm", async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.json({ id: user._id, phone });
+    res.json({ id: user.id, phone });
   } catch (error) {
     console.error("/api/auth/otp/confirm error", { message: error?.message, stack: error?.stack });
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
@@ -88,8 +91,8 @@ router.post("/otp/confirm", async (req, res) => {
 router.get("/username-available", async (req, res) => {
   const username = (req.query.username || "").toString().trim().toLowerCase();
   if (!username) return res.status(400).json({ available: false });
-  const existing = await AdminUser.findOne({ username });
-  res.json({ available: !existing });
+  const available = await usernameAvailable(username);
+  res.json({ available });
 });
 
 // Register profile after OTP login
@@ -97,11 +100,9 @@ const profileSchema = z.object({ username: z.string().min(3), name: z.string().m
 router.post("/register-profile", requireAuth, async (req, res) => {
   try {
     const { username, name } = profileSchema.parse(req.body);
-    const taken = await AdminUser.findOne({ username: username.toLowerCase() });
+    const taken = !(await usernameAvailable(username));
     if (taken) return res.status(409).json({ message: "Username taken" });
-    req.user.username = username.toLowerCase();
-    req.user.name = name;
-    await req.user.save();
+    await setProfile(req.user.id, username, name);
     res.json({ ok: true });
   } catch (error) {
     console.error("/api/auth/register-profile error", error);
@@ -118,10 +119,12 @@ const authSchema = z.object({
 router.post("/register", async (req, res) => {
   try {
     const { email, password } = authSchema.parse(req.body);
-    const existing = await AdminUser.findOne({ email });
+    const existing = await findByEmail(email);
     if (existing) return res.status(400).json({ message: "Email already registered" });
-    const user = await AdminUser.create({ email, password });
-    const token = signToken(user._id.toString());
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(password, salt);
+    const user = await createWithEmailPassword(email, hash);
+    const token = signToken(user.id);
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
@@ -130,7 +133,7 @@ router.post("/register", async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.status(201).json({ id: user._id, email: user.email, token });
+    res.status(201).json({ id: user.id, email: user.email, token });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("/api/auth/register error", { message: error?.message, stack: error?.stack });
@@ -142,11 +145,11 @@ router.post("/register", async (req, res) => {
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = authSchema.parse(req.body);
-    const user = await AdminUser.findOne({ email });
+    const user = await findByEmail(email);
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
-    const ok = await user.comparePassword(password);
+    const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-    const token = signToken(user._id.toString());
+    const token = signToken(user.id);
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
@@ -155,7 +158,7 @@ router.post("/login", async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.json({ id: user._id, email: user.email, token });
+    res.json({ id: user.id, email: user.email, token });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("/api/auth/login error", { message: error?.message, stack: error?.stack });
@@ -176,7 +179,7 @@ router.post("/logout", (_req, res) => {
 });
 
 router.get("/me", requireAuth, (req, res) => {
-  res.json({ id: req.user._id, email: req.user.email, phone: req.user.phone, username: req.user.username, name: req.user.name });
+  res.json({ id: req.user.id, email: req.user.email, phone: req.user.phone, username: req.user.username, name: req.user.name });
 });
 
 export default router;

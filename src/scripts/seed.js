@@ -1,18 +1,12 @@
 import dotenv from "dotenv";
-import { connectToDatabase } from "../config/db.js";
-import { PoemTemplate } from "../models/PoemTemplate.js";
+import { connectToDatabase, migrate } from "../config/db.js";
+import { createPoem } from "../repo/poems.js";
 
 dotenv.config();
 
 async function main() {
   await connectToDatabase();
-  const existing = await PoemTemplate.countDocuments();
-  if (existing > 0) {
-    // eslint-disable-next-line no-console
-    // eslint-disable-next-line no-console
-    console.log(`Templates already present: ${existing}`);
-    process.exit(0);
-  }
+  await migrate();
 
   const samples = [
     {
@@ -32,7 +26,9 @@ async function main() {
     },
   ];
 
-  await PoemTemplate.insertMany(samples);
+  for (const s of samples) {
+    await createPoem(null, s);
+  }
   // eslint-disable-next-line no-console
   // eslint-disable-next-line no-console
   console.log("Seeded poem templates.");

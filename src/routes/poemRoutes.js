@@ -1,26 +1,28 @@
 import { Router } from "express";
 import { z } from "zod";
-import { PoemTemplate } from "../models/PoemTemplate.js";
 import { requireAuth } from "../middleware/auth.js";
 import { renderPoemTemplate, validateTemplateOrThrow, analyzeTemplate } from "../utils/poemEngine.js";
+import { samplePoems, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo } from "../repo/poems.js";
+import { getPool } from "../config/db.js";
 
 const router = Router();
 
 // Public endpoints
 router.get("/trending", async (_req, res) => {
-  // Return up to 4 random poems (skip count to reduce DB round trips)
-  const poems = await PoemTemplate.aggregate([
-    { $sample: { size: 4 } },
-    { $lookup: { from: "adminusers", localField: "owner", foreignField: "_id", as: "owner" } },
-    { $addFields: { owner: { $first: "$owner" } } },
-    { $project: { text: 1, instructions: 1, usageCount: 1, ownerUsername: "$owner.username" } },
-  ]);
+  const poems = await samplePoems(4);
+  const pool = getPool();
+  const ownerIds = poems.map((p) => p.owner_id).filter(Boolean);
+  let ownerMap = new Map();
+  if (ownerIds.length) {
+    const { rows } = await pool.query(`SELECT id, username FROM admin_users WHERE id = ANY($1::uuid[])`, [ownerIds]);
+    ownerMap = new Map(rows.map((r) => [r.id, r.username]));
+  }
   const demo = poems.map((p) => ({
-    id: p._id,
+    id: p.id,
     text: renderPoemTemplate(p.text, "आप", ["मोनू", "टिंकू", "बबलू"]),
     instructions: p.instructions,
-    usageCount: p.usageCount || 0,
-    ownerUsername: p.ownerUsername || null,
+    usageCount: p.usage_count || 0,
+    ownerUsername: p.owner_id ? ownerMap.get(p.owner_id) || null : null,
   }));
   res.json(demo);
 });
@@ -31,26 +33,20 @@ router.get("/browse", async (req, res) => {
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10));
   const q = (req.query.q || "").toString().trim();
 
-  const useTextSearch = q.length > 0;
-  const filter = useTextSearch ? { $text: { $search: q } } : {};
-  const sort = useTextSearch ? { score: { $meta: "textScore" } } : { createdAt: -1 };
-
-  const total = await PoemTemplate.countDocuments(filter);
-  const query = PoemTemplate.find(filter)
-    .sort(sort)
-    .skip((page - 1) * limit)
-    .limit(limit)
-    .select({ text: 1, instructions: 1, usageCount: 1, owner: 1, ...(useTextSearch ? { score: { $meta: "textScore" } } : {}) })
-    .populate({ path: "owner", select: "username", options: { lean: true } })
-    .lean();
-
-  const docs = await query;
-  const items = docs.map((d) => ({
-    _id: d._id,
+  const { rows, total } = await browsePoems({ q, page, limit });
+  const pool = getPool();
+  const ownerIds = rows.map((r) => r.owner_id).filter(Boolean);
+  let ownerMap = new Map();
+  if (ownerIds.length) {
+    const { rows: users } = await pool.query(`SELECT id, username FROM admin_users WHERE id = ANY($1::uuid[])`, [ownerIds]);
+    ownerMap = new Map(users.map((u) => [u.id, u.username]));
+  }
+  const items = rows.map((d) => ({
+    _id: d.id,
     text: d.text,
     instructions: d.instructions,
-    usageCount: d.usageCount,
-    ownerUsername: (d.owner && d.owner.username) || null,
+    usageCount: d.usage_count,
+    ownerUsername: d.owner_id ? ownerMap.get(d.owner_id) || null : null,
   }));
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 });
@@ -63,7 +59,7 @@ const genSchema = z.object({
 router.post("/generate", async (req, res) => {
   try {
     const { userName, friendNames } = genSchema.parse(req.body);
-    const [template] = await PoemTemplate.aggregate([{ $sample: { size: 1 } }]);
+    const [template] = await samplePoems(1);
     if (!template) return res.status(404).json({ message: "No templates available" });
     // Ensure inputs satisfy template requirements
     const { maxFriendIndexRequired } = analyzeTemplate(template.text);
@@ -71,8 +67,8 @@ router.post("/generate", async (req, res) => {
       return res.status(400).json({ message: `This template needs at least ${maxFriendIndexRequired} friend names` });
     }
     const text = renderPoemTemplate(template.text, userName, friendNames);
-    await PoemTemplate.updateOne({ _id: template._id }, { $inc: { usageCount: 1 } });
-    res.json({ text, templateId: template._id });
+    await incUsage(template.id);
+    res.json({ text, templateId: template.id });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("/api/poems/generate error", { message: error?.message, stack: error?.stack });
@@ -88,22 +84,22 @@ const poemSchema = z.object({
 });
 
 router.get("/", requireAuth, async (req, res) => {
-  const poems = await PoemTemplate.find({ owner: req.user._id }).sort({ createdAt: -1 });
-  res.json(poems);
+  const poems = await listByOwner(req.user.id);
+  res.json(poems.map((p) => ({ _id: p.id, text: p.text, instructions: p.instructions })));
 });
 
 router.get("/:id", requireAuth, async (req, res) => {
-  const poem = await PoemTemplate.findOne({ _id: req.params.id, owner: req.user._id });
+  const poem = await findByIdForOwner(req.params.id, req.user.id);
   if (!poem) return res.status(404).json({ message: "Not found" });
-  res.json(poem);
+  res.json({ _id: poem.id, text: poem.text, instructions: poem.instructions });
 });
 
 router.post("/", requireAuth, async (req, res) => {
   try {
     const data = poemSchema.parse(req.body);
     validateTemplateOrThrow(data.text);
-    const poem = await PoemTemplate.create({ ...data, owner: req.user._id });
-    res.status(201).json(poem);
+    const poem = await createPoem(req.user.id, data);
+    res.status(201).json({ _id: poem.id });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to create poem" });
@@ -114,13 +110,9 @@ router.put("/:id", requireAuth, async (req, res) => {
   try {
     const data = poemSchema.parse(req.body);
     validateTemplateOrThrow(data.text);
-    const poem = await PoemTemplate.findOneAndUpdate(
-      { _id: req.params.id, owner: req.user._id },
-      data,
-      { new: true }
-    );
-    if (!poem) return res.status(404).json({ message: "Not found" });
-    res.json(poem);
+    const ok = await updatePoemRepo(req.params.id, req.user.id, data);
+    if (!ok) return res.status(404).json({ message: "Not found" });
+    res.json({ _id: req.params.id });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Failed to update poem" });
@@ -128,8 +120,8 @@ router.put("/:id", requireAuth, async (req, res) => {
 });
 
 router.delete("/:id", requireAuth, async (req, res) => {
-  const deleted = await PoemTemplate.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
-  if (!deleted) return res.status(404).json({ message: "Not found" });
+  const ok = await deletePoemRepo(req.params.id, req.user.id);
+  if (!ok) return res.status(404).json({ message: "Not found" });
   res.json({ ok: true });
 });
 

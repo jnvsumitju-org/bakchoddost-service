@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
-import { AdminUser } from "../models/AdminUser.js";
 import env from "../config/env.js";
+import { findById } from "../repo/users.js";
 
 export async function requireAuth(req, res, next) {
   try {
@@ -11,7 +11,7 @@ export async function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ message: "Unauthorized" });
 
     const payload = jwt.verify(token, env.JWT_SECRET);
-    const user = await AdminUser.findById(payload.id).select("-password");
+    const user = await findById(payload.id);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
     req.user = user;
     next();
