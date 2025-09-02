@@ -9,12 +9,18 @@ const router = Router();
 // Public endpoints
 router.get("/trending", async (_req, res) => {
   // Return up to 4 random poems (skip count to reduce DB round trips)
-  const poems = await PoemTemplate.aggregate([{ $sample: { size: 4 } }]);
+  const poems = await PoemTemplate.aggregate([
+    { $sample: { size: 4 } },
+    { $lookup: { from: "adminusers", localField: "owner", foreignField: "_id", as: "owner" } },
+    { $addFields: { owner: { $first: "$owner" } } },
+    { $project: { text: 1, instructions: 1, usageCount: 1, ownerUsername: "$owner.username" } },
+  ]);
   const demo = poems.map((p) => ({
     id: p._id,
     text: renderPoemTemplate(p.text, "आप", ["मोनू", "टिंकू", "बबलू"]),
     instructions: p.instructions,
     usageCount: p.usageCount || 0,
+    ownerUsername: p.ownerUsername || null,
   }));
   res.json(demo);
 });
@@ -34,9 +40,18 @@ router.get("/browse", async (req, res) => {
     .sort(sort)
     .skip((page - 1) * limit)
     .limit(limit)
-    .select({ text: 1, instructions: 1, usageCount: 1, ...(useTextSearch ? { score: { $meta: "textScore" } } : {}) });
+    .select({ text: 1, instructions: 1, usageCount: 1, owner: 1, ...(useTextSearch ? { score: { $meta: "textScore" } } : {}) })
+    .populate({ path: "owner", select: "username", options: { lean: true } })
+    .lean();
 
-  const items = await query;
+  const docs = await query;
+  const items = docs.map((d) => ({
+    _id: d._id,
+    text: d.text,
+    instructions: d.instructions,
+    usageCount: d.usageCount,
+    ownerUsername: (d.owner && d.owner.username) || null,
+  }));
   res.json({ items, page, limit, total, pages: Math.ceil(total / limit) });
 });
 
