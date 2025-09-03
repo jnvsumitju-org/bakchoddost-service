@@ -12,6 +12,19 @@ export async function samplePoems(limit) {
   return rows;
 }
 
+export async function samplePoemsForFriendCount(friendCount, limit) {
+  const p = getPool();
+  const { rows } = await p.query(
+    `SELECT id, text, instructions, usage_count, owner_id
+     FROM poem_templates
+     WHERE max_friend_required = $1
+     ORDER BY random()
+     LIMIT $2`,
+    [friendCount, limit]
+  );
+  return rows;
+}
+
 export async function browsePoems({ q, page, limit }) {
   const p = getPool();
   const offset = (page - 1) * limit;

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { renderPoemTemplate, validateTemplateOrThrow, analyzeTemplate } from "../utils/poemEngine.js";
-import { samplePoems, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo, countFittingTemplates, getFitStats } from "../repo/poems.js";
+import { samplePoems, samplePoemsForFriendCount, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo, countFittingTemplates, getFitStats } from "../repo/poems.js";
 import { getPool } from "../config/db.js";
 import { logger } from "../utils/logger.js";
 import { findByUsername } from "../repo/users.js";
@@ -61,15 +61,21 @@ const genSchema = z.object({
 router.post("/generate", async (req, res) => {
   try {
     const { userName, friendNames } = genSchema.parse(req.body);
-    req.log?.info("poem:generate", { userName, friends: friendNames.length });
-    const [template] = await samplePoems(1);
+    const normalizedFriends = friendNames.map((f) => f.trim()).filter(Boolean);
+    req.log?.info("poem:generate", { userName, friends: normalizedFriends.length });
+    // Prefer an exact match by required friend count
+    let [template] = await samplePoemsForFriendCount(normalizedFriends.length, 1);
+    if (!template) {
+      // Fallback to any random template if exact match not available
+      [template] = await samplePoems(1);
+    }
     if (!template) return res.status(404).json({ message: "No templates available" });
     // Ensure inputs satisfy template requirements
     const { maxFriendIndexRequired } = analyzeTemplate(template.text);
-    if (friendNames.length < maxFriendIndexRequired) {
+    if (normalizedFriends.length < maxFriendIndexRequired) {
       return res.status(400).json({ message: `This template needs at least ${maxFriendIndexRequired} friend names` });
     }
-    const text = renderPoemTemplate(template.text, userName, friendNames);
+    const text = renderPoemTemplate(template.text, userName, normalizedFriends);
     await incUsage(template.id);
     res.json({ text, templateId: template.id });
   } catch (error) {
