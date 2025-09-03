@@ -69,10 +69,13 @@ export async function migrate() {
       name TEXT,
       otp_code TEXT,
       otp_expires_at TIMESTAMPTZ,
+      otp_sent_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // Backfill columns if migrating from older schema
+  await p.query(`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS otp_sent_at TIMESTAMPTZ;`);
   // PoemTemplate
   await p.query(`
     CREATE TABLE IF NOT EXISTS poem_templates (

@@ -3,10 +3,10 @@ import { getPool } from "../config/db.js";
 export async function upsertOtpByPhone(phone, code, expiresAt) {
   const p = getPool();
   await p.query(
-    `INSERT INTO admin_users (phone, otp_code, otp_expires_at)
-     VALUES ($1, $2, $3)
+    `INSERT INTO admin_users (phone, otp_code, otp_expires_at, otp_sent_at)
+     VALUES ($1, $2, $3, NOW())
      ON CONFLICT (phone)
-     DO UPDATE SET otp_code = EXCLUDED.otp_code, otp_expires_at = EXCLUDED.otp_expires_at, updated_at = NOW()`,
+     DO UPDATE SET otp_code = EXCLUDED.otp_code, otp_expires_at = EXCLUDED.otp_expires_at, otp_sent_at = NOW(), updated_at = NOW()`,
     [phone, code, expiresAt]
   );
 }

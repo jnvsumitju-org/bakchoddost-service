@@ -50,7 +50,7 @@ router.post("/otp/start", async (req, res) => {
     req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom, allowBypass });
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 60 * 1000); // 1 minute expiry
 
     await upsertOtpByPhone(phone, code, expiresAt);
 
@@ -127,16 +127,28 @@ router.get("/username-available", async (req, res) => {
   res.json({ available });
 });
 
-// Register profile after OTP login
-const profileSchema = z.object({ username: z.string().min(3), name: z.string().min(1) });
+// Register profile after OTP login (auto username)
+const profileSchema = z.object({ firstName: z.string().min(1), lastName: z.string().optional() });
 router.post("/register-profile", requireAuth, async (req, res) => {
   try {
-    const { username, name } = profileSchema.parse(req.body);
-    req.log?.info("auth:profile:save", { userId: req.user.id, username });
-    const taken = !(await usernameAvailable(username));
-    if (taken) return res.status(409).json({ message: "Username taken" });
-    await setProfile(req.user.id, username, name);
-    res.json({ ok: true });
+    const { firstName, lastName } = profileSchema.parse(req.body);
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+    // Generate a unique username based on names
+    const base = [firstName, lastName || ""].join("").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "user";
+    let candidate = base;
+    let suffix = 0;
+    // Ensure uniqueness with a bounded number of attempts
+    // Try base, baseNN, and base + random if needed
+    // eslint-disable-next-line no-await-in-loop
+    while (!(await usernameAvailable(candidate))) {
+      suffix += 1;
+      if (suffix < 100) candidate = `${base}${suffix}`;
+      else candidate = `${base}${Math.floor(100 + Math.random() * 900)}`;
+      if (suffix > 500) break; // safety
+    }
+    req.log?.info("auth:profile:save", { userId: req.user.id, username: candidate });
+    await setProfile(req.user.id, candidate, fullName);
+    res.json({ ok: true, username: candidate, name: fullName });
   } catch (error) {
     const log = req.log || logger;
     log.error("auth:profile:save:error", { message: error?.message, stack: error?.stack });
