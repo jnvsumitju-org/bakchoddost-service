@@ -43,13 +43,13 @@ export async function incUsage(id) {
 
 export async function listByOwner(ownerId) {
   const p = getPool();
-  const { rows } = await p.query(`SELECT id, text, instructions FROM poem_templates WHERE owner_id = $1 ORDER BY created_at DESC`, [ownerId]);
+  const { rows } = await p.query(`SELECT id, text, instructions, usage_count FROM poem_templates WHERE owner_id = $1 ORDER BY created_at DESC`, [ownerId]);
   return rows;
 }
 
 export async function findByIdForOwner(id, ownerId) {
   const p = getPool();
-  const { rows } = await p.query(`SELECT id, text, instructions FROM poem_templates WHERE id = $1 AND owner_id = $2 LIMIT 1`, [id, ownerId]);
+  const { rows } = await p.query(`SELECT id, text, instructions, usage_count FROM poem_templates WHERE id = $1 AND owner_id = $2 LIMIT 1`, [id, ownerId]);
   return rows[0] || null;
 }
 

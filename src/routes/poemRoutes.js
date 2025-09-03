@@ -100,7 +100,7 @@ const poemSchema = z.object({
 
 router.get("/", requireAuth, async (req, res) => {
   const poems = await listByOwner(req.user.id);
-  res.json(poems.map((p) => ({ _id: p.id, text: p.text, instructions: p.instructions })));
+  res.json(poems.map((p) => ({ _id: p.id, text: p.text, instructions: p.instructions, usageCount: p.usage_count || p.usageCount || 0 })));
 });
 
 router.get("/:id", requireAuth, async (req, res) => {
