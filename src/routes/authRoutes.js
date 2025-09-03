@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import twilio from "twilio";
+import axios from "axios";
 import bcrypt from "bcryptjs";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import env from "../config/env.js";
@@ -16,6 +17,20 @@ import {
 } from "../repo/users.js";
 
 const router = Router();
+// Outbound diagnostics - verify Internet egress from Lambda
+router.get("/diag/outbound", async (req, res) => {
+  try {
+    const startedAt = Date.now();
+    const { data } = await axios.get("https://api.ipify.org?format=json", { timeout: 3000 });
+    const ms = Date.now() - startedAt;
+    req.log?.info("diag:outbound:ok", { ip: data?.ip, ms });
+    res.json({ ok: true, ip: data?.ip, ms });
+  } catch (e) {
+    req.log?.error("diag:outbound:error", { message: e?.message });
+    res.status(500).json({ ok: false, error: e?.message || "failed" });
+  }
+});
+
 
 function getTwilio() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = env;
