@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { renderPoemTemplate, validateTemplateOrThrow, analyzeTemplate } from "../utils/poemEngine.js";
-import { samplePoems, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo } from "../repo/poems.js";
+import { samplePoems, browsePoems, incUsage, listByOwner, findByIdForOwner, createPoem, updatePoem as updatePoemRepo, deletePoem as deletePoemRepo, countFittingTemplates, getFitStats } from "../repo/poems.js";
 import { getPool } from "../config/db.js";
 import { logger } from "../utils/logger.js";
+import { findByUsername } from "../repo/users.js";
 
 const router = Router();
 
@@ -79,6 +80,18 @@ router.post("/generate", async (req, res) => {
   }
 });
 
+// Live count of matching templates for a given friend list length
+router.get("/fit-count", async (req, res) => {
+  const n = Math.max(0, parseInt((req.query.friends || "0"), 10) || 0);
+  const c = await countFittingTemplates(n);
+  res.json({ count: c });
+});
+
+router.get("/fit-stats", async (_req, res) => {
+  const rows = await getFitStats();
+  res.json({ items: rows });
+});
+
 // Admin CRUD
 const poemSchema = z.object({
   text: z.string().min(1),
@@ -132,6 +145,16 @@ router.delete("/:id", requireAuth, async (req, res) => {
   const ok = await deletePoemRepo(req.params.id, req.user.id);
   if (!ok) return res.status(404).json({ message: "Not found" });
   res.json({ ok: true });
+});
+
+// Public: list poems by username
+router.get("/by/:username", async (req, res) => {
+  const username = (req.params.username || "").toString().trim();
+  if (!username) return res.status(400).json({ message: "Username required" });
+  const user = await findByUsername(username);
+  if (!user) return res.status(404).json({ message: "User not found" });
+  const poems = await listByOwner(user.id);
+  res.json({ user: { id: user.id, username: user.username, name: user.name }, items: poems.map((p) => ({ _id: p.id, text: p.text, instructions: p.instructions })) });
 });
 
 export default router;

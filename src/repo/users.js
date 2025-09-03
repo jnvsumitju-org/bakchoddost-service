@@ -57,4 +57,12 @@ export async function usernameAvailable(username) {
   return rows.length === 0;
 }
 
+export async function findByUsername(username) {
+  const p = getPool();
+  const { rows } = await p.query(`SELECT id, username, name FROM admin_users WHERE username = $1 LIMIT 1`, [
+    username.toLowerCase(),
+  ]);
+  return rows[0] || null;
+}
+
 

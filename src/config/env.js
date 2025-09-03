@@ -23,6 +23,14 @@ const RawEnvSchema = z.object({
 
   // Feature flags
   BCD_RETURN_OTP: z.string().optional(),
+
+  // App Config
+  MAX_API_CALL_LIMIT: z.string().optional(),
+  MAX_API_CALL_WINDOW_MS: z.string().optional(),
+  MAX_AUTH_API_CALL_LIMIT: z.string().optional(),
+  MAX_AUTH_API_CALL_WINDOW_MS: z.string().optional(),
+  MAX_POEM_GENERATE_LIMIT: z.string().optional(),
+  MAX_POEM_GENERATE_WINDOW_MS: z.string().optional(),
 });
 
 const raw = RawEnvSchema.parse(process.env);
@@ -53,6 +61,13 @@ export const env = {
   TWILIO_FROM_NUMBER: raw.TWILIO_FROM_NUMBER || undefined,
 
   BCD_RETURN_OTP: raw.BCD_RETURN_OTP === "true",
+
+  MAX_API_CALL_LIMIT: Number(raw.MAX_API_CALL_LIMIT) || 3000,
+  MAX_API_CALL_WINDOW_MS: Number(raw.MAX_API_CALL_WINDOW_MS) || 900000,
+  MAX_AUTH_API_CALL_LIMIT: Number(raw.MAX_AUTH_API_CALL_LIMIT) || 3000,
+  MAX_AUTH_API_CALL_WINDOW_MS: Number(raw.MAX_AUTH_API_CALL_WINDOW_MS) || 900000,
+  MAX_POEM_GENERATE_LIMIT: Number(raw.MAX_POEM_GENERATE_LIMIT) || 3000,
+  MAX_POEM_GENERATE_WINDOW_MS: Number(raw.MAX_POEM_GENERATE_WINDOW_MS) || 900000,
 };
 
 // Strict checks for production-only critical envs

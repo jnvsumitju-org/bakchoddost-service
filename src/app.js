@@ -57,9 +57,9 @@ export function createApp() {
     next();
   });
 
-  const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
-  const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
-  const generateLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  const apiLimiter = rateLimit({ windowMs: env.MAX_API_CALL_WINDOW_MS, max: env.MAX_API_CALL_LIMIT, standardHeaders: true, legacyHeaders: false });
+  const authLimiter = rateLimit({ windowMs: env.MAX_AUTH_API_CALL_WINDOW_MS, max: env.MAX_AUTH_API_CALL_LIMIT, standardHeaders: true, legacyHeaders: false });
+  const generateLimiter = rateLimit({ windowMs: env.MAX_POEM_GENERATE_WINDOW_MS, max: env.MAX_POEM_GENERATE_LIMIT, standardHeaders: true, legacyHeaders: false });
   app.use(apiLimiter);
 
   app.get("/api/health", (_req, res) => {

@@ -56,9 +56,9 @@ export async function findByIdForOwner(id, ownerId) {
 export async function createPoem(ownerId, data) {
   const p = getPool();
   const { rows } = await p.query(
-    `INSERT INTO poem_templates (text, instructions, owner_id)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [data.text, data.instructions || null, ownerId]
+    `INSERT INTO poem_templates (text, instructions, owner_id, max_friend_required)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [data.text, data.instructions || null, ownerId, inferMaxFriend(data.text)]
   );
   return rows[0];
 }
@@ -66,8 +66,8 @@ export async function createPoem(ownerId, data) {
 export async function updatePoem(id, ownerId, data) {
   const p = getPool();
   const { rowCount } = await p.query(
-    `UPDATE poem_templates SET text = $3, instructions = $4, updated_at = NOW() WHERE id = $1 AND owner_id = $2`,
-    [id, ownerId, data.text, data.instructions || null]
+    `UPDATE poem_templates SET text = $3, instructions = $4, max_friend_required = $5, updated_at = NOW() WHERE id = $1 AND owner_id = $2`,
+    [id, ownerId, data.text, data.instructions || null, inferMaxFriend(data.text)]
   );
   return rowCount > 0;
 }
@@ -76,6 +76,29 @@ export async function deletePoem(id, ownerId) {
   const p = getPool();
   const { rowCount } = await p.query(`DELETE FROM poem_templates WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
   return rowCount > 0;
+}
+
+export async function countFittingTemplates(friendCount) {
+  const p = getPool();
+  const { rows } = await p.query(`SELECT COUNT(*)::int AS c FROM poem_templates WHERE max_friend_required = $1`, [friendCount]);
+  return rows[0]?.c || 0;
+}
+
+export async function getFitStats() {
+  const p = getPool();
+  const { rows } = await p.query(`SELECT max_friend_required AS friends, COUNT(*)::int AS count FROM poem_templates GROUP BY max_friend_required ORDER BY max_friend_required ASC`);
+  return rows;
+}
+
+function inferMaxFriend(text) {
+  const re = /\{\{\s*friendName(\d+)\s*\}\}/g;
+  let m;
+  let max = 0;
+  while ((m = re.exec(text)) !== null) {
+    const idx = parseInt(m[1], 10);
+    if (!Number.isNaN(idx) && idx > max) max = idx;
+  }
+  return max;
 }
 
 

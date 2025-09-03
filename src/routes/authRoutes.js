@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
 import twilio from "twilio";
-import axios from "axios";
 import bcrypt from "bcryptjs";
 import { signToken, requireAuth } from "../middleware/auth.js";
 import env from "../config/env.js";
@@ -17,20 +16,6 @@ import {
 } from "../repo/users.js";
 
 const router = Router();
-// Outbound diagnostics - verify Internet egress from Lambda
-router.get("/diag/outbound", async (req, res) => {
-  try {
-    const startedAt = Date.now();
-    const { data } = await axios.get("https://api.ipify.org?format=json", { timeout: 3000 });
-    const ms = Date.now() - startedAt;
-    req.log?.info("diag:outbound:ok", { ip: data?.ip, ms });
-    res.json({ ok: true, ip: data?.ip, ms });
-  } catch (e) {
-    req.log?.error("diag:outbound:error", { message: e?.message });
-    res.status(500).json({ ok: false, error: e?.message || "failed" });
-  }
-});
-
 
 function getTwilio() {
   const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER } = env;
@@ -46,15 +31,16 @@ router.post("/otp/start", async (req, res) => {
     const { phone } = phoneSchema.parse(req.body);
     req.log?.info("auth:otp:start", { phone });
     const { sms, twilioFrom } = getTwilio();
-    const allowBypass = env.BCD_RETURN_OTP || !env.isProduction;
-    req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom, allowBypass });
+    req.log?.info("auth:otp:twilio:config", { hasClient: !!sms, hasFrom: !!twilioFrom});
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 60 * 1000); // 1 minute expiry
 
-    await upsertOtpByPhone(phone, code, expiresAt);
+    if (!env.isProduction) {
+      logger.info(`[otp] sent to=${phone} code=${code}`);
+    }
 
-    if (sms && twilioFrom) {
+    if (sms && twilioFrom && env.isProduction) {
       try {
         logger.info("Triggering SMS");
         const result = await sms.messages.create({
@@ -67,15 +53,10 @@ router.post("/otp/start", async (req, res) => {
         req.log?.error("auth:otp:twilio:error", { message: twilioErr?.message, code: twilioErr?.code });
         if (!allowBypass) return res.status(500).json({ message: "Failed to send OTP" });
       }
-    } else if (!allowBypass) {
-      return res.status(500).json({ message: "Twilio not configured" });
     }
-    // Only log OTP meta in non-production to avoid leaking in logs
-    if (!env.isProduction) {
-      // eslint-disable-next-line no-console
-      console.log(`[otp] sent to=%s code=%s`, phone, code);
-    }
-    if (allowBypass) return res.json({ ok: true, code });
+
+    await upsertOtpByPhone(phone, code, expiresAt);
+
     return res.json({ ok: true });
   } catch (error) {
     const log = req.log || logger;
@@ -105,12 +86,12 @@ router.post("/otp/confirm", async (req, res) => {
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
-      sameSite: isProd ? "lax" : "lax",
+      sameSite: isProd ? "none" : "lax",
       secure: isProd,
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    res.json({ id: user.id, phone });
+    res.json({ id: user.id, phone, username: user.username, name: user.name, profileComplete: !!(user.username && user.name) });
   } catch (error) {
     const log = req.log || logger;
     log.error("auth:otp:confirm:error", { message: error?.message, stack: error?.stack });
@@ -175,7 +156,7 @@ router.post("/register", async (req, res) => {
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
-      sameSite: isProd ? "lax" : "lax",
+      sameSite: isProd ? "none" : "lax",
       secure: isProd,
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -201,7 +182,7 @@ router.post("/login", async (req, res) => {
     const isProd = env.isProduction;
     res.cookie("token", token, {
       httpOnly: true,
-      sameSite: isProd ? "lax" : "lax",
+      sameSite: isProd ? "none" : "lax",
       secure: isProd,
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -219,7 +200,7 @@ router.post("/logout", (_req, res) => {
   const isProd = process.env.NODE_ENV === "production";
   res.clearCookie("token", {
     httpOnly: true,
-    sameSite: isProd ? "lax" : "lax",
+    sameSite: isProd ? "none" : "lax",
     secure: isProd,
     path: "/",
   });

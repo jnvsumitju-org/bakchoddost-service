@@ -88,8 +88,37 @@ export async function migrate() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // Backfill column for existing tables
+  await p.query(`ALTER TABLE poem_templates ADD COLUMN IF NOT EXISTS max_friend_required INTEGER NOT NULL DEFAULT 0;`);
   // Indexes
   await p.query(`CREATE INDEX IF NOT EXISTS idx_poem_templates_usage_count ON poem_templates (usage_count DESC);`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_poem_templates_text_gin ON poem_templates USING GIN (to_tsvector('english', text));`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_poem_templates_max_friend ON poem_templates (max_friend_required);`);
+  // Backfill max_friend_required for existing rows once
+  try {
+    const { rows } = await p.query(`SELECT id, text FROM poem_templates WHERE max_friend_required = 0 LIMIT 1000`);
+    if (rows.length > 0) {
+      for (const row of rows) {
+        const max = inferMaxFriend(row.text || "");
+        if (Number.isFinite(max) && max > 0) {
+          // eslint-disable-next-line no-await-in-loop
+          await p.query(`UPDATE poem_templates SET max_friend_required = $2 WHERE id = $1`, [row.id, max]);
+        }
+      }
+    }
+  } catch (e) {
+    logger.error("db:migrate:backfill:max_friend_required:error", { message: e?.message });
+  }
   logger.info("db:migrate:success");
+}
+
+function inferMaxFriend(text) {
+  const re = /\{\{\s*friendName(\d+)\s*\}\}/g;
+  let m;
+  let max = 0;
+  while ((m = re.exec(text)) !== null) {
+    const idx = parseInt(m[1], 10);
+    if (!Number.isNaN(idx) && idx > max) max = idx;
+  }
+  return max;
 }
