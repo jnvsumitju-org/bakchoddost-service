@@ -51,7 +51,7 @@ router.post("/otp/start", async (req, res) => {
         req.log?.info("auth:otp:twilio:sent", { sid: result?.sid, status: result?.status });
       } catch (twilioErr) {
         req.log?.error("auth:otp:twilio:error", { message: twilioErr?.message, code: twilioErr?.code });
-        if (!allowBypass) return res.status(500).json({ message: "Failed to send OTP" });
+        return res.status(500).json({ message: "Failed to send OTP" });
       }
     }
 
