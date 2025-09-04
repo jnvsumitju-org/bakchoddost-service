@@ -69,6 +69,16 @@ export function createApp() {
   app.use("/api/poems/generate", generateLimiter);
   app.use("/api/poems", poemRoutes);
 
+  // API root - return 200 with noindex to satisfy crawlers
+  app.get("/", (_req, res) => {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.type("text/plain").send("bakchoddost API");
+  });
+  app.head("/", (_req, res) => {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.status(200).end();
+  });
+
   // Error handler
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err, req, res, _next) => {
