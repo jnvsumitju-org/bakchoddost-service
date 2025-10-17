@@ -7,7 +7,9 @@ const { Pool } = pkg;
 let pool;
 
 const caPath = path.resolve(import.meta.dirname, "../../certs/ca.pem");
+logger.info("caPath", { caPath });
 const ca = fs.existsSync(caPath) ? fs.readFileSync(caPath).toString() : null;
+logger.info("ca", { ca });
 
 export function getPool() {
   if (!pool) {
