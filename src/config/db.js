@@ -6,17 +6,20 @@ const { Pool } = pkg;
 
 let pool;
 
+const caPath = path.resolve(import.meta.dirname, "../../certs/ca.pem");
+const ca = fs.existsSync(caPath) ? fs.readFileSync(caPath).toString() : null;
+
 export function getPool() {
   if (!pool) {
     const isDev = env.NODE_ENV !== "production";
-    const ssl = isDev ? false : { rejectUnauthorized: false };
+
+    const ssl = ca ? { ca, rejectUnauthorized: true } : false;
+
     pool = new Pool({
       connectionString: env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 10_000,
-      ssl: {
-        rejectUnauthorized: false
-      },
+      ssl,
     });
   }
   return pool;
