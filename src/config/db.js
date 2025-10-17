@@ -6,22 +6,22 @@ const { Pool } = pkg;
 
 let pool;
 
-const caPath = path.resolve(import.meta.dirname, "../../certs/ca.pem");
-logger.info("caPath", { caPath });
-const ca = fs.existsSync(caPath) ? fs.readFileSync(caPath).toString() : null;
-logger.info("ca", { ca });
+// const caPath = path.resolve(import.meta.dirname, "../../certs/ca.pem");
+// logger.info("caPath", { caPath });
+// const ca = fs.existsSync(caPath) ? fs.readFileSync(caPath).toString() : null;
+// logger.info("ca", { ca });
 
 export function getPool() {
   if (!pool) {
-    const isDev = env.NODE_ENV !== "production";
+    // const isDev = env.NODE_ENV !== "production";
 
-    const ssl = ca ? { ca, rejectUnauthorized: true } : false;
+    // const ssl = ca ? { ca, rejectUnauthorized: true } : false;
 
     pool = new Pool({
       connectionString: env.DATABASE_URL,
       max: 5,
       idleTimeoutMillis: 10_000,
-      ssl,
+      ssl: false,
     });
   }
   return pool;
