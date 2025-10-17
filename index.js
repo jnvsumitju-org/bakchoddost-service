@@ -1,22 +1,23 @@
-import serverlessExpress from "@vendia/serverless-express";
 import dotenv from "dotenv";
 import { connectToDatabase, migrate } from "./src/config/db.js";
 import { createApp } from "./src/app.js";
 
 dotenv.config();
-let server; // cached between Lambda invocations
 
-async function bootstrap() {
-  if (!server) {
-    await connectToDatabase();   // connect Postgres once, on cold start
+let app;
+let isConnected = false;
+
+export default async function handler(req, res) {
+  if (!isConnected) {
+    await connectToDatabase();
     await migrate();
-    const app = createApp();
-    server = serverlessExpress({ app });
+    isConnected = true;
   }
-  return server;
-}
 
-export const handler = async (event, context) => {
-  const srv = await bootstrap();  // use cached app/server
-  return srv(event, context);
-};
+  if (!app) {
+    app = createApp();
+  }
+
+  // Vercel provides req/res directly (no serverless-express needed)
+  return app(req, res);
+}
