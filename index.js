@@ -9,8 +9,8 @@ let isConnected = false;
 
 export default async function handler(req, res) {
   if (!isConnected) {
-    await connectToDatabase();
-    await migrate();
+    // await connectToDatabase();
+    // await migrate();
     isConnected = true;
   }
 
